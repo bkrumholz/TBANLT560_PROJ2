@@ -1,0 +1,27 @@
+---
+title: "Project 2"
+author: "Brian Krumholz"
+date: "3/4/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir ="C:/Users/Lugal/OneDrive/Documents/MSBA/TBANLT 560/Project 2/")
+```
+
+```{r libraries}
+library(tidyverse)
+```
+
+```{r}
+require(mlbench)
+data(BreastCancer)
+df<-BreastCancer
+summary(df)
+
+
+```
+
+
+
