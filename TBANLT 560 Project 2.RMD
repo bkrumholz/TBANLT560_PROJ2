@@ -7,7 +7,7 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-knitr::opts_knit$set(root.dir ="C:/Users/Lugal/OneDrive/Documents/MSBA/TBANLT 560/Project 2/")
+knitr::opts_knit$set(root.dir ="C:/Users/Lugal/OneDrive/Documents/MSBA/TBANLT 560/Project 2/TBANLT560_PROJ2/")
 ```
 
 ```{r libraries}
