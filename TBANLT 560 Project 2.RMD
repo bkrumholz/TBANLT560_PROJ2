@@ -12,16 +12,109 @@ knitr::opts_knit$set(root.dir ="C:/Users/Lugal/OneDrive/Documents/MSBA/TBANLT 56
 
 ```{r libraries}
 library(tidyverse)
+library(mlbench)
+library(e1071)
+library(klaR)
+library(nnet)
+library(neuralnet)
+library(MASS)
+library(rpart)
+library(randomForest)
+library(caret)
 ```
 
 ```{r}
-require(mlbench)
+
 data(BreastCancer)
 df<-BreastCancer
 summary(df)
+```
 
+```{r var_cleaning}
 
+df<-na.omit(df)  #Get rid of rows with NAs
+df$malignant<-as.factor(ifelse(df$Class=="malignant",1,0))  #Convert Class into binary
+df<-within(df,rm(Class,Id))
 ```
 
 
+```{r supportvectormachine}
+mysvm <- svm(malignant ~ ., df)
+mysvm.pred <- predict(mysvm, df)
+table(mysvm.pred,df$malignant)
+confusionMatrix(mysvm.pred,df$malignant)
+```
+
+```{r naiveBayes}
+mynb <- naiveBayes(malignant ~ ., df)
+mynb.pred <- predict(mysvm, df)
+table(mynb.pred,df$malignant)
+confusionMatrix(mynb.pred,df$malignant)
+```
+
+```{r neuralnet}
+df2<-df
+#convert to integers
+df2$Cl.thickness<-as.integer(df$Cl.thickness)
+df2$malignant<-ifelse(as.integer(df$malignant)==2,1,0)
+df2$Mitoses<-as.integer(df$Mitoses)
+df2$Cell.size<-as.integer(df$Cell.size)
+df2$Cell.shape<-as.integer(df$Cell.shape)
+df2$Marg.adhesion<-as.integer(df$Marg.adhesion)
+df2$Epith.c.size<-as.integer(df$Epith.c.size)
+df2$Bare.nuclei<-as.integer(df$Bare.nuclei)
+df2$Bl.cromatin<-as.integer(df$Bl.cromatin)
+df2$Normal.nucleoli<-as.integer(df$Normal.nucleoli)
+
+preproc<-preProcess(df2,method = "range")
+df.range<-predict(preproc,df2)
+
+mynn <- neuralnet::neuralnet(malignant ~ ., data=df.range,linear.output=T,hidden=c(5))
+plot(mynn)
+mynn.pred <- ifelse(predict(mynn, df2)>.5,1,0)
+length(mynn.pred)
+confusionMatrix(as.factor(mynn.pred),as.factor(df.range$malignant))
+```
+
+```{r}
+mytree <- rpart(malignant ~ ., df)
+plot(mytree); text(mytree) # in "iris_tree.ps"
+summary(mytree)
+mytree.pred <- predict(mytree,df,type="class")
+table(mytree.pred,df$malignant)
+```
+
+```{r crossValidation}
+ans <- numeric(length(df[,1]))
+for (i in 1:length(df[,1])) {
+  mytree <- rpart(malignant ~ ., df[-i,])
+  mytree.pred <- predict(mytree,df[i,],type="class")
+  ans[i] <- mytree.pred
+}
+ans <- factor(ans,labels=levels(df$malignant))
+table(ans,df$malignant)
+confusionMatrix(as.factor(ans),as.factor(df$malignant))
+```
+
+```{r QDA}
+#Quadratic Discriminant Analysis
+
+myqda <- qda(malignant ~ ., data=df2)
+myqda.pred <- predict(myqda, df2)
+table(myqda.pred$class,df2$malignant)
+```
+
+```{r RDA}
+#Regularised Discriminant Analysis
+myrda <- rda(malignant ~ ., df2)
+myrda.pred <- predict(myrda, df2)
+table(myrda.pred$class,df2$malignant)
+```
+
+```{r rf}
+#Random Forests
+myrf <- randomForest(malignant ~ .,df)
+myrf.pred <- predict(myrf, df)
+table(myrf.pred, df$malignant)
+```
 
