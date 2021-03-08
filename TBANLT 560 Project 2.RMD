@@ -38,23 +38,44 @@ df<-within(df,rm(Class,Id))
 ```
 
 
-```{r supportvectormachine}
-mysvm <- svm(malignant ~ ., df)
-mysvm.pred <- predict(mysvm, df)
-table(mysvm.pred,df$malignant)
-confusionMatrix(mysvm.pred,df$malignant)
+```{r}
+dim(df)
+train_ind<-sample(dim(df)[1],dim(df)[1]*.6)
+train.df<-df[train_ind,]
+valid.df<-df[-train_ind,]
 ```
 
-```{r naiveBayes}
-mynb <- naiveBayes(malignant ~ ., df)
-mynb.pred <- predict(mysvm, df)
-table(mynb.pred,df$malignant)
-confusionMatrix(mynb.pred,df$malignant)
+
+```{r supportvectormachine_training}
+mysvm <- svm(malignant ~ ., train.df)
+mysvm.pred <- predict(mysvm, train.df)
+table(mysvm.pred,train.df$malignant)
+train.svm.cm<-confusionMatrix(mysvm.pred,train.df$malignant,positive = "1")
+train.svm.cm
+```
+```{r supportvectormachine_valid}
+mysvm.pred <- predict(mysvm, valid.df)
+table(mysvm.pred,valid.df$malignant)
+valid.svm.cm<-confusionMatrix(mysvm.pred,valid.df$malignant,positive = "1")
+valid.svm.cm
 ```
 
-```{r neuralnet}
+```{r naiveBayes_train}
+mynb <- naiveBayes(malignant ~ ., train.df)
+mynb.pred <- predict(mynb, train.df)
+table(mynb.pred,train.df$malignant)
+confusionMatrix(mynb.pred,train.df$malignant,positive="1")
+```
+
+```{r naiveBayes_validation}
+mynb.pred <- predict(mynb, valid.df)
+table(mynb.pred,valid.df$malignant)
+confusionMatrix(mynb.pred,valid.df$malignant,positive="1")
+```
+
+```{r neuralnet_setup}
 df2<-df
-#convert to integers
+#convert to integers #There are better ways to do this
 df2$Cl.thickness<-as.integer(df$Cl.thickness)
 df2$malignant<-ifelse(as.integer(df$malignant)==2,1,0)
 df2$Mitoses<-as.integer(df$Mitoses)
@@ -66,23 +87,47 @@ df2$Bare.nuclei<-as.integer(df$Bare.nuclei)
 df2$Bl.cromatin<-as.integer(df$Bl.cromatin)
 df2$Normal.nucleoli<-as.integer(df$Normal.nucleoli)
 
+# BreastCancerqda <- lapply(BreastCancer,as.numeric)
+# BreastCancerqda$Class <- factor(BreastCancerqda$Class, labels = c("benign", "malignant"))
+
+
 preproc<-preProcess(df2,method = "range")
 df.range<-predict(preproc,df2)
 
-mynn <- neuralnet::neuralnet(malignant ~ ., data=df.range,linear.output=T,hidden=c(5))
-plot(mynn)
-mynn.pred <- ifelse(predict(mynn, df2)>.5,1,0)
-length(mynn.pred)
-confusionMatrix(as.factor(mynn.pred),as.factor(df.range$malignant))
+train.df.range<-df.range[train_ind,]
+valid.df.range<-df.range[-train_ind,]
 ```
 
-```{r}
-mytree <- rpart(malignant ~ ., df)
-plot(mytree); text(mytree) # in "iris_tree.ps"
-summary(mytree)
-mytree.pred <- predict(mytree,df,type="class")
-table(mytree.pred,df$malignant)
+
+```{r neuralnet_training}
+mynn <- neuralnet::neuralnet(malignant ~ ., data=train.df.range,linear.output=T,hidden=c(5))
+plot(mynn)
+mynn.pred <- ifelse(predict(mynn, newdata=train.df.range)>.5,1,0)
+train.nn.cm<-confusionMatrix(as.factor(mynn.pred),as.factor(train.df.range$malignant),positive = "1")
+train.nn.cm
 ```
+
+```{r neuralnet_valid}
+mynn.pred <- ifelse(predict(mynn, newdata=valid.df.range)>.5,1,0)
+valid.nn.cm<-confusionMatrix(as.factor(mynn.pred),as.factor(valid.df.range$malignant),positive = "1")
+valid.nn.cm
+```
+
+```{r decision_tree_training}
+mytree <- rpart(malignant ~ ., train.df)
+plot(mytree); text(mytree) 
+mytree.pred <- predict(mytree,newdata=train.df,type="class")
+train.dt.cm<-confusionMatrix(as.factor(mytree.pred),as.factor(train.df$malignant),positive = "1")
+train.dt.cm
+```
+
+```{r decision_tree_validation}
+mytree.pred <- predict(mytree,newdata=valid.df,type="class")
+valid.dt.cm<-confusionMatrix(as.factor(mytree.pred),as.factor(valid.df$malignant),positive = "1")
+valid.dt.cm
+```
+
+Cross-Validation decision tree method doesn't have an easy way to split data into training and validation. Because of this, the full dataset is used rather than the model being run one for training and once for validation datasets.
 
 ```{r crossValidation}
 ans <- numeric(length(df[,1]))
@@ -93,28 +138,60 @@ for (i in 1:length(df[,1])) {
 }
 ans <- factor(ans,labels=levels(df$malignant))
 table(ans,df$malignant)
-confusionMatrix(as.factor(ans),as.factor(df$malignant))
+sv.cm<-confusionMatrix(as.factor(ans),as.factor(df$malignant),positive = "1")
+sv.cm
 ```
 
-```{r QDA}
+
+```{r QDA_training}
 #Quadratic Discriminant Analysis
 
-myqda <- qda(malignant ~ ., data=df2)
-myqda.pred <- predict(myqda, df2)
-table(myqda.pred$class,df2$malignant)
+train.df2<-df2[train_ind,]
+valid.df2<-df2[-train_ind,]
+
+myqda <- qda(malignant ~ ., data=train.df2)
+myqda.pred <- predict(myqda, train.df2)
+# table(myqda.pred$class,training.df2$malignant)
+train.qda.cm<-confusionMatrix(as.factor(myqda.pred$class),as.factor(train.df2$malignant),positive = "1")
+train.qda.cm
 ```
 
-```{r RDA}
+```{r QDA_validation}
+#Quadratic Discriminant Analysis
+
+myqda.pred <- predict(myqda, valid.df2)
+# table(myqda.pred$class,training.df2$malignant)
+valid.qda.cm<-confusionMatrix(as.factor(myqda.pred$class),as.factor(valid.df2$malignant),positive = "1")
+valid.qda.cm
+```
+
+```{r RDA_training}
 #Regularised Discriminant Analysis
-myrda <- rda(malignant ~ ., df2)
-myrda.pred <- predict(myrda, df2)
-table(myrda.pred$class,df2$malignant)
+myrda <- rda(malignant ~ ., train.df2)
+myrda.pred <- predict(myrda, train.df2)
+train.rda.cm<-confusionMatrix(as.factor(myrda.pred$class),as.factor(train.df2$malignant),positive = "1")
+train.rda.cm
 ```
 
-```{r rf}
+```{r RDA_valid}
+#Regularised Discriminant Analysis
+myrda.pred <- predict(myrda, valid.df2)
+valid.rda.cm<-confusionMatrix(as.factor(myrda.pred$class),as.factor(valid.df2$malignant),positive = "1")
+valid.rda.cm
+```
+
+```{r rf_training}
 #Random Forests
-myrf <- randomForest(malignant ~ .,df)
-myrf.pred <- predict(myrf, df)
-table(myrf.pred, df$malignant)
+myrf <- randomForest(malignant ~ .,train.df)
+myrf.pred <- predict(myrf, train.df)
+train.rf.cm<-confusionMatrix(as.factor(myrf.pred),as.factor(train.df$malignant),positive = "1")
+train.rf.cm
+```
+
+```{r rf_valid}
+#Random Forests
+myrf.pred <- predict(myrf, valid.df)
+valid.rf.cm<-confusionMatrix(as.factor(myrf.pred),as.factor(valid.df$malignant),positive = "1")
+valid.rf.cm
 ```
 
