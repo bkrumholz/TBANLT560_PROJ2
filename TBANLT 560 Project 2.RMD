@@ -21,6 +21,7 @@ library(MASS)
 library(rpart)
 library(randomForest)
 library(caret)
+library(plyr)
 ```
 
 ```{r}
@@ -38,11 +39,26 @@ df<-within(df,rm(Class,Id))
 ```
 
 
-```{r}
+```{r setup_partition}
 dim(df)
 train_ind<-sample(dim(df)[1],dim(df)[1]*.6)
 train.df<-df[train_ind,]
 valid.df<-df[-train_ind,]
+```
+
+```{r model_stats}
+  model.stats<-data.frame(Model=character(),Training.Accuracy=double(),Validation.Accuracy=double())
+  model.results<-as.data.frame(as.numeric(as.character(df$malignant)))
+  colnames(model.results)<-"Actual.Malignant"
+  df.len<-dim(model.results)[1]
+  model.results$svm<-rep(0,df.len)
+  model.results$nb<-rep(0,df.len)
+  model.results$nn<-rep(0,df.len)
+  model.results$dt<-rep(0,df.len)
+  model.results$cv<-rep(0,df.len)
+  model.results$qda<-rep(0,df.len)
+  model.results$rda<-rep(0,df.len)
+  model.results$rf<-rep(0,df.len)
 ```
 
 
@@ -52,26 +68,43 @@ mysvm.pred <- predict(mysvm, train.df)
 table(mysvm.pred,train.df$malignant)
 train.svm.cm<-confusionMatrix(mysvm.pred,train.df$malignant,positive = "1")
 train.svm.cm
+
 ```
 ```{r supportvectormachine_valid}
 mysvm.pred <- predict(mysvm, valid.df)
-table(mysvm.pred,valid.df$malignant)
 valid.svm.cm<-confusionMatrix(mysvm.pred,valid.df$malignant,positive = "1")
 valid.svm.cm
+model.stats[1,]=c("Support Vector Machine",train.svm.cm$overall[1],valid.svm.cm$overall[1])
 ```
+
+Now the SVM model will be run for the full dataset and saved off as part of the ensemble.
+
+```{r svm_full_predict}
+mysvm.pred <- predict(mysvm, df)
+model.results$svm<-as.numeric(as.character(mysvm.pred))
+```
+
 
 ```{r naiveBayes_train}
 mynb <- naiveBayes(malignant ~ ., train.df)
 mynb.pred <- predict(mynb, train.df)
-table(mynb.pred,train.df$malignant)
-confusionMatrix(mynb.pred,train.df$malignant,positive="1")
+train.nb.cm<-confusionMatrix(mynb.pred,train.df$malignant,positive="1")
+train.nb.cm
 ```
 
 ```{r naiveBayes_validation}
 mynb.pred <- predict(mynb, valid.df)
 table(mynb.pred,valid.df$malignant)
-confusionMatrix(mynb.pred,valid.df$malignant,positive="1")
+valid.nb.cm<-confusionMatrix(mynb.pred,valid.df$malignant,positive="1")
+valid.nb.cm
+model.stats[2,]=c("NaiveBayes",train.nb.cm$overall[1],valid.nb.cm$overall[1])
 ```
+
+```{r naiveBayes_full_predict}
+mynb.pred <- predict(mynb, df)
+model.results$nb<-as.numeric(as.character(mynb.pred))
+```
+
 
 ```{r neuralnet_setup}
 df2<-df
@@ -111,7 +144,14 @@ train.nn.cm
 mynn.pred <- ifelse(predict(mynn, newdata=valid.df.range)>.5,1,0)
 valid.nn.cm<-confusionMatrix(as.factor(mynn.pred),as.factor(valid.df.range$malignant),positive = "1")
 valid.nn.cm
+model.stats[3,]=c("Neural Network",train.nn.cm$overall[1],valid.nn.cm$overall[1])
 ```
+
+```{r neuralnet_full_predict}
+mynn.pred <- ifelse(predict(mynn, newdata=df.range)>.5,1,0)
+model.results$nn<-as.numeric(as.character(mynn.pred))
+```
+
 
 ```{r decision_tree_training}
 mytree <- rpart(malignant ~ ., train.df)
@@ -125,7 +165,14 @@ train.dt.cm
 mytree.pred <- predict(mytree,newdata=valid.df,type="class")
 valid.dt.cm<-confusionMatrix(as.factor(mytree.pred),as.factor(valid.df$malignant),positive = "1")
 valid.dt.cm
+model.stats[4,]=c("Decision Tree",train.dt.cm$overall[1],valid.dt.cm$overall[1])
 ```
+
+```{r}
+mytree.pred <- predict(mytree,newdata=df,type="class")
+model.results$dt<-as.numeric(as.character(mytree.pred))
+```
+
 
 Cross-Validation decision tree method doesn't have an easy way to split data into training and validation. Because of this, the full dataset is used rather than the model being run one for training and once for validation datasets.
 
@@ -140,6 +187,9 @@ ans <- factor(ans,labels=levels(df$malignant))
 table(ans,df$malignant)
 sv.cm<-confusionMatrix(as.factor(ans),as.factor(df$malignant),positive = "1")
 sv.cm
+model.stats[5,]=c("Cross Validation","",sv.cm$overall[1])
+
+model.results$cv<-as.numeric(as.character(ans))
 ```
 
 
@@ -163,7 +213,14 @@ myqda.pred <- predict(myqda, valid.df2)
 # table(myqda.pred$class,training.df2$malignant)
 valid.qda.cm<-confusionMatrix(as.factor(myqda.pred$class),as.factor(valid.df2$malignant),positive = "1")
 valid.qda.cm
+model.stats[6,]=c("Quadratic Discriminant Analysis",train.qda.cm$overall[1],valid.qda.cm$overall[1])
 ```
+
+```{r}
+myqda.pred <- predict(myqda, df2)
+model.results$qda<-as.numeric(as.character(myqda.pred$class))
+```
+
 
 ```{r RDA_training}
 #Regularised Discriminant Analysis
@@ -178,7 +235,14 @@ train.rda.cm
 myrda.pred <- predict(myrda, valid.df2)
 valid.rda.cm<-confusionMatrix(as.factor(myrda.pred$class),as.factor(valid.df2$malignant),positive = "1")
 valid.rda.cm
+model.stats[7,]=c("Regularised Discriminant Analysis",train.rda.cm$overall[1],valid.rda.cm$overall[1])
 ```
+
+```{r}
+myrda.pred <- predict(myrda, df2)
+model.results$rda<-as.numeric(as.character(myrda.pred$class))
+```
+
 
 ```{r rf_training}
 #Random Forests
@@ -193,5 +257,24 @@ train.rf.cm
 myrf.pred <- predict(myrf, valid.df)
 valid.rf.cm<-confusionMatrix(as.factor(myrf.pred),as.factor(valid.df$malignant),positive = "1")
 valid.rf.cm
+model.stats[8,]=c("Random Forest",train.rf.cm$overall[1],valid.rf.cm$overall[1])
+```
+
+```{r}
+myrf.pred <- predict(myrf, df)
+model.results$rf<-as.numeric(as.character(myrf.pred))
+```
+
+```{r calc_ensemble}
+print(model.stats)
+model.results$Row.Sum<-rowSums(model.results[,c(2,3,4,5,6,7,8,9)])
+model.results$ensemble.pick<-ifelse(model.results$Row.Sum>4,1,ifelse(model.results$Row.Sum==4,model.results$rf,0))
+```
+
+```{r}
+ensemble.cm<-confusionMatrix(as.factor(model.results$ensemble.pick),as.factor(model.results$Actual.Malignant))
+ensemble.cm
+model.stats[9,]<-c("Ensemble Model","",ensemble.cm$overall[1])
+print(model.stats)
 ```
 
