@@ -12,7 +12,7 @@ knitr::opts_knit$set(root.dir ="C:/Users/Lugal/OneDrive/Documents/MSBA/TBANLT 56
 
 Purpose: This project is built to explore if an ensemble model for classification can provide an more accurate model for classifying data. This project will be using the BreastCancer dataset from the mlbench library. The data was collected by Dr. WOlberg at the University of Wisconsin.
 
-```{r libraries}
+```{r libraries, warning=FALSE,message=FALSE}
 library(tidyverse)
 library(mlbench)
 library(e1071)
@@ -28,7 +28,7 @@ library(gplots)
 library(ggplot2)
 ```
 
-```{r}
+```{r load_data}
 
 data(BreastCancer)
 df<-BreastCancer
@@ -347,6 +347,8 @@ print(model.stats[order(model.stats$Validation.Accuracy,decreasing = TRUE),])
 
 The ensemble model does very well and ties for second place with the Random Forest model.However, it might be possible to increase the accuracy further. The next step is to explore how the ensemble relates to the other models.
 
+Normally, an ensemble model works best if each model is not focused on analyzing the same aspect of the data. Below is a correlation matrix of each model.
+
 ```{r}
 cer.cor<-cor(model.results[c(2:9,11)])
 plot(cer.cor)
@@ -355,14 +357,27 @@ heatmap.2(cer.cor, Rowv = FALSE, Colv = FALSE, dendrogram = "none",
           notecol = "black", key = TRUE, trace = 'none', margins = c(5,5))
 ```
 
+Due to the high accuracy of every model, each model is over 90% correlated with the other models. It is not surprising that the highest accuracy models are most strongly correlated with each other and the ensemble. The next area to examine is to see if decisions of the ensemble are being determined by unanimous consent or if there are a lot of tie-breakers.
+
 ```{r decision}
 correct.df<-as.data.frame(ifelse(model.results[,c(2:9,11)]==model.results$Actual.Malignant,1,0))
 selected.df<-as.data.frame(ifelse(model.results[,c(2:9)]==model.results$ensemble.pick,1,0))
 selected.df$correct<-ifelse(model.results$Actual.Malignant==model.results$ensemble.pick,"Yes","No")
 selected.df$decision.cnt<-rowSums(selected.df[c(1:8)])
 ggplot(data=selected.df,aes(x=decision.cnt,fill=correct))+geom_histogram(bins=5)+scale_x_continuous("Models in Agreement")+ guides(fill=guide_legend(title="Correct Classification"))
+```
+
+A very large portion of the ensemble model picks have 100% agreement between all the models. The graph starts at 4 because if only 3 models or less agree on a classification, the other 5 are in agreement for the other class. 
+
+If we look at the mix of correct vs misclassified records, we can see if the errors occur more frequently where there is agreement or when it is a split decision.
+
+```{r}
 ggplot(data=selected.df,aes(x=decision.cnt,fill=factor(correct)))+geom_histogram(bins=5,position="fill")+scale_x_continuous("Models in Agreement")+ guides(fill=guide_legend(title="Correct Classification"))
 ```
+
+The tie-breaker votes are where there is the greatest chance of misclassification. The chance of misclassification decreases as more models agree.
+
+As an experiment, I will look at which models are most likely to be wrong when a record is misclassified. If one model is especially bad, it might be possible to improve accuracy by dropping it from the ensemble model.
 
 ```{r wrong_pick_analysis}
 
@@ -384,4 +399,4 @@ model.stats[10,]<-c("Ensemble Model B","",ensemble.B.cm$overall[1],round((1-as.n
 print(model.stats[order(model.stats$Validation.Accuracy,decreasing = TRUE),])
 ```
 
-The decision tree model was the least accurate models in the ensemble and it never went against the consensus pick for misclassifications. When it was dropped from the ensemble model, it boosted the accuracy from 0.971 to 0.974. That is the difference of one additional correct classification.
+The decision tree model was the least accurate models in the ensemble and it never went against the consensus pick for misclassifications. When it was dropped from the ensemble model, it boosted the accuracy from 0.971 to 0.974. That is the difference of one additional correct classification which is enough to tie the ensemble model with the best single model. Due to the small difference of one record it can be hard to conclusively say that removing the decision tree model was the optimum choose for the model. With a set of less accurate models, the difference may have been more pronounce.
