@@ -10,6 +10,8 @@ knitr::opts_chunk$set(echo = TRUE)
 knitr::opts_knit$set(root.dir ="C:/Users/Lugal/OneDrive/Documents/MSBA/TBANLT 560/Project 2/TBANLT560_PROJ2/")
 ```
 
+Purpose: This project is built to explore if an ensemble model for classification can provide an more accurate model for classifying data. This project will be using the BreastCancer dataset from the mlbench library. The data was collected by Dr. WOlberg at the University of Wisconsin.
+
 ```{r libraries}
 library(tidyverse)
 library(mlbench)
@@ -22,6 +24,8 @@ library(rpart)
 library(randomForest)
 library(caret)
 library(plyr)
+library(gplots)
+library(ggplot2)
 ```
 
 ```{r}
@@ -31,6 +35,10 @@ df<-BreastCancer
 summary(df)
 ```
 
+The models will predict if a cell sample is malignant or benign. To help with the analyze, the "Class" column will be converted to a binary category called "malignant" where a value of 1 represents a malignant sample and a value of 0 indicates that it is benign. This conversion is done as some models need a numerical response variable.
+
+As part of the data cleaning process, rows that have NA values will be dropped. While some models like decision trees can handle NAs, other models cannot. Since the purpose is to combine the results from all models, the data used must be useable by all the models.
+
 ```{r var_cleaning}
 
 df<-na.omit(df)  #Get rid of rows with NAs
@@ -39,18 +47,23 @@ df<-within(df,rm(Class,Id))
 ```
 
 
+To start the analysis process, the cell data will be broken into a training partition and a validation partition. The training partition which includes 60% of records will be used to train each model. The same training records will be used for each model to minimize random chance giving a model an edge in predictions. The remaining 40% of the data will be used to evaluate how well the model does with data that it hasn't been trained on. 
+
 ```{r setup_partition}
 dim(df)
+set.seed(1)
 train_ind<-sample(dim(df)[1],dim(df)[1]*.6)
 train.df<-df[train_ind,]
 valid.df<-df[-train_ind,]
 ```
 
+Two data frame are created that will store information about each model. The model.stats data frame will record each model's accuracy with the training data and the validation data. The model.results data frame will store the predicted values for each record of the data. Each column will be the predicted values of one model.
+
 ```{r model_stats}
-  model.stats<-data.frame(Model=character(),Training.Accuracy=double(),Validation.Accuracy=double())
-  model.results<-as.data.frame(as.numeric(as.character(df$malignant)))
+  model.stats<-data.frame(Model=character(),Training.Accuracy=double(),Validation.Accuracy=double()) #dataframe to store statistics about model
+  model.results<-as.data.frame(as.numeric(as.character(df$malignant))) #putting the actual result for each sample
   colnames(model.results)<-"Actual.Malignant"
-  df.len<-dim(model.results)[1]
+  df.len<-dim(model.results)[1]  #creating an empty dataframe to store results of model
   model.results$svm<-rep(0,df.len)
   model.results$nb<-rep(0,df.len)
   model.results$nn<-rep(0,df.len)
@@ -61,6 +74,7 @@ valid.df<-df[-train_ind,]
   model.results$rf<-rep(0,df.len)
 ```
 
+The first model to run against the data is the support vector machine algorithm or SVM for short. This algorithm works by creating hyperplane in n-dimensional space that will separate the benign and malignant records. With our 9 predictors, the hyperplane will be an 8 dimension plane. While this is hard to visualize, the algorithm is not very computationally expensive to run.
 
 ```{r supportvectormachine_training}
 mysvm <- svm(malignant ~ ., train.df)
@@ -70,6 +84,9 @@ train.svm.cm<-confusionMatrix(mysvm.pred,train.df$malignant,positive = "1")
 train.svm.cm
 
 ```
+
+Checking the training data predictions of the SVM model, we get a 97.6% accuracy. Now we will see if the model is as good with the validation data set.
+
 ```{r supportvectormachine_valid}
 mysvm.pred <- predict(mysvm, valid.df)
 valid.svm.cm<-confusionMatrix(mysvm.pred,valid.df$malignant,positive = "1")
@@ -77,7 +94,9 @@ valid.svm.cm
 model.stats[1,]=c("Support Vector Machine",train.svm.cm$overall[1],valid.svm.cm$overall[1])
 ```
 
-Now the SVM model will be run for the full dataset and saved off as part of the ensemble.
+The validation data set predictions are slightly worse than the training with 96.0% accuracy. That indicates there is probably a slight bit of overfitting, but the model still gives good results with new data.
+
+Now the SVM model will be run for the full data set and the results will be saved off to build the ensemble model.
 
 ```{r svm_full_predict}
 mysvm.pred <- predict(mysvm, df)
@@ -133,7 +152,7 @@ valid.df.range<-df.range[-train_ind,]
 
 
 ```{r neuralnet_training}
-mynn <- neuralnet::neuralnet(malignant ~ ., data=train.df.range,linear.output=T,hidden=c(5))
+mynn <- neuralnet::neuralnet(malignant ~ ., data=train.df.range,linear.output=T,hidden=c(5),rep=10)
 plot(mynn)
 mynn.pred <- ifelse(predict(mynn, newdata=train.df.range)>.5,1,0)
 train.nn.cm<-confusionMatrix(as.factor(mynn.pred),as.factor(train.df.range$malignant),positive = "1")
@@ -257,6 +276,9 @@ train.rf.cm
 myrf.pred <- predict(myrf, valid.df)
 valid.rf.cm<-confusionMatrix(as.factor(myrf.pred),as.factor(valid.df$malignant),positive = "1")
 valid.rf.cm
+myrf.pred.comp <- predict(myrf, df)
+complete.rf.cm<-confusionMatrix(as.factor(myrf.pred.comp),as.factor(df$malignant),positive = "1")
+complete.rf.cm
 model.stats[8,]=c("Random Forest",train.rf.cm$overall[1],valid.rf.cm$overall[1])
 ```
 
@@ -271,10 +293,50 @@ model.results$Row.Sum<-rowSums(model.results[,c(2,3,4,5,6,7,8,9)])
 model.results$ensemble.pick<-ifelse(model.results$Row.Sum>4,1,ifelse(model.results$Row.Sum==4,model.results$rf,0))
 ```
 
-```{r}
-ensemble.cm<-confusionMatrix(as.factor(model.results$ensemble.pick),as.factor(model.results$Actual.Malignant))
+```{r review_models}
+ensemble.cm<-confusionMatrix(as.factor(model.results$ensemble.pick[-train_ind]),as.factor(model.results$Actual.Malignant[-train_ind]))
 ensemble.cm
 model.stats[9,]<-c("Ensemble Model","",ensemble.cm$overall[1])
-print(model.stats)
+model.stats$Misclassification.Count<-round((1-as.numeric(model.stats$Validation.Accuracy))*dim(valid.df)[1])
+print(model.stats[order(model.stats$Validation.Accuracy,decreasing = TRUE),])
+
 ```
 
+```{r}
+cer.cor<-cor(model.results[c(2:9,11)])
+plot(cer.cor)
+heatmap.2(cer.cor, Rowv = FALSE, Colv = FALSE, dendrogram = "none", 
+          cellnote = round(cer.cor,2), 
+          notecol = "black", key = TRUE, trace = 'none', margins = c(5,5))
+```
+
+```{r decision}
+correct.df<-as.data.frame(ifelse(model.results[,c(2:9,11)]==model.results$Actual.Malignant,1,0))
+selected.df<-as.data.frame(ifelse(model.results[,c(2:9)]==model.results$ensemble.pick,1,0))
+selected.df$correct<-ifelse(model.results$Actual.Malignant==model.results$ensemble.pick,"Yes","No")
+selected.df$decision.cnt<-rowSums(selected.df[c(1:8)])
+ggplot(data=selected.df,aes(x=decision.cnt,fill=correct))+geom_histogram(bins=5)+scale_x_continuous("Models in Agreement")+ guides(fill=guide_legend(title="Correct Classification"))
+ggplot(data=selected.df,aes(x=decision.cnt,fill=factor(correct)))+geom_histogram(bins=5,position="fill")+scale_x_continuous("Models in Agreement")+ guides(fill=guide_legend(title="Correct Classification"))
+```
+
+```{r wrong_pick_analysis}
+
+wrong.cnt<-dim(correct.df[correct.df$ensemble.pick==0,])[1]
+wrong.df<-as.data.frame(colSums(correct.df[correct.df$ensemble.pick==0,c(1:8)]))
+colnames(wrong.df)<-"Correct Count"
+wrong.df$'Percent Correct'<-round(wrong.df$`Correct Count`/wrong.cnt,2)
+print(wrong.df)
+```
+
+When we look at which model consistently vote wrong in the misclassified set, we see that the decision tree never goes against the ensemble to provide the correct answer. Let's drop the decision tree from the ensemble and see if that can increase the ensemble's accuracy. As an added bonus, this will make the number of models polled an odd number so there will no longer be a need for tie-breakers.
+
+```{r calc_ensemble_2}
+model.results$Row.Sum.B<-rowSums(model.results[,c(2,3,4,6,7,8,9)])
+model.results$ensemble.pick.B<-ifelse(model.results$Row.Sum.B>=4,1,0)
+ensemble.B.cm<-confusionMatrix(as.factor(model.results$ensemble.pick.B[-train_ind]),as.factor(model.results$Actual.Malignant[-train_ind]))
+ensemble.B.cm
+model.stats[10,]<-c("Ensemble Model B","",ensemble.B.cm$overall[1],round((1-as.numeric(ensemble.B.cm$overall[1]))*dim(valid.df)[1]))
+print(model.stats[order(model.stats$Validation.Accuracy,decreasing = TRUE),])
+```
+
+The decision tree model was the least accurate models in the ensemble and it never went against the consensus pick for misclassifications. When it was dropped from the ensemble model, it boosted the accuracy from 0.971 to 0.974. That is the difference of one additional correct classification.
